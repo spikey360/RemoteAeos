@@ -44,11 +44,14 @@ public final class RemoteData implements DiscoveryListener{
  private OutputStream out;
  //the place to store all obtained operators
  private OpStore opstore;
+ //the place to store all controls
+ private OpStore constore;
  
  public  RemoteData(AeosRemote parent){
   this.parent=parent;
   uuidSet[0]=BTRMSERVERUUID;
   opstore=new OpStore();
+  constore=new OpStore();
   run();
  }
  
@@ -79,7 +82,7 @@ public final class RemoteData implements DiscoveryListener{
    parent.appendToMainScreen(services.size()+" service(s) found");
   for(int i=0;i<services.size();i++){
    try{
-     parent.addToList("*"+((ServiceRecord)services.elementAt(i)).getHostDevice().getFriendlyName(false));
+     parent.addToList(((ServiceRecord)services.elementAt(i)).getHostDevice().getFriendlyName(false));
     }catch(IOException e){
      e.printStackTrace();
     }
@@ -203,6 +206,8 @@ public final class RemoteData implements DiscoveryListener{
  parent.appendToMainScreen("Shaken hands successfully");
  }catch(IOException e) {
  	parent.appendToMainScreen("Error during handshaking");
+ 	closeConnection();
+ 	parent.appendToMainScreen("Connection Terminated");
  }finally{
  //closeConnection(); //not necessary unless the server implements so too
  }
@@ -210,26 +215,25 @@ public final class RemoteData implements DiscoveryListener{
  
  public void readProtocolString(){
  try{
- //in=conn.openInputStream();
- //out=conn.openOutputStream();
+
  int len=0;
- //int n=0;
  len=in.read(psbuffer,0,psbuffer.length);
- ///////////////
- //while((len=in.read(psbuffer,n,psbuffer.length-n))!=-1)
- //	n+=len;
- //////////////
  String ps=new String(psbuffer,0,len);
  String opts[]=Tools.split(ps,';');
  if(opts[0].equals("l")){
 	for(int i=1;i<opts.length-1;i++){
 		parent.addOperation(opstore.storeOp(opts[i]));
 		}
+	parent.appendToMainScreen("Operation list received");
+ }
+ else if(opts[0].equals("c")){
+ 	//parent.appendToMainScreen("Reading control list");
+ 	for(int i=1;i<opts.length-1;i++){
+		parent.addControl(constore.storeOp(opts[i]));
+		}
+	parent.appendToMainScreen("Control list received");
  }
  else if(opts[0].equals("p")){
- //display an alert and store size
- //String z="Name:"+opts[1]+"\nSize:"+opts[2]+"B";
- //parent.showInformation(z);
  /////////////////////////////
  String z="";
  for(int i=1;i<opts.length-1;i++)
@@ -241,11 +245,18 @@ public final class RemoteData implements DiscoveryListener{
  //done, the picture has been displayed
  //add functionality later
  }
+ else if(opts[0].equals("ackc")){
+ //done, the control has been executed
+ //add functionality later
+ }
  else{
  //to be interpreted as picture, implementation later
  }
  }catch(IOException e){
  	parent.appendToMainScreen("Error while reading protocol string");
+ 	//close connection
+ 	closeConnection();
+ 	parent.appendToMainScreen("Connection terminated");
  }
  finally{
  //closeConnection();
@@ -275,18 +286,46 @@ public final class RemoteData implements DiscoveryListener{
  out.flush();
  readProtocolString();
  }catch(IOException e){
- parent.appendToMainScreen("Error during seeking info");
+ parent.appendToMainScreen("Error during operation request");
+ e.printStackTrace();
+ }
+ }
+ 
+ public void requestControl(String z){
+ try{
+ String cap=constore.getOpcode(z);
+ String msg="c;"+cap;
+ int len=0;
+ out.write(msg.getBytes());
+ out.flush();
+ readProtocolString();
+ }catch(IOException e){
+ parent.appendToMainScreen("Error during control request");
+ e.printStackTrace();
+ }
+ }
+ 
+ public void sendAck(String z){
+ try{
+ //String cap=constore.getOpcode(z);
+ String msg="ack"+z+";";
+ int len=0;
+ out.write(msg.getBytes());
+ out.flush();
+ //readProtocolString();
+ }catch(IOException e){
+ parent.appendToMainScreen("Acknowledgement failed");
  e.printStackTrace();
  }
  }
  
  public Image loadImage(String z){
  //expecting a picture now
- byte picdata[]=new byte[size];
+
  int n=0;
  try{
  String cap=opstore.getOpcode(z);
- String msg="d;"+cap;
+ String msg="m;"+cap;
  int len=0;
  out.write(msg.getBytes());
  out.flush();
@@ -297,6 +336,8 @@ public final class RemoteData implements DiscoveryListener{
  String opts[]=Tools.split(ps,';');
  name=opts[1];
  size=Integer.parseInt(opts[2]);
+ byte picdata[]=new byte[size];
+ parent.appendToMainScreen("Fetching "+name+" of size "+size+"B");
  //send req for picture
  msg="f;"+cap;
  out.write(msg.getBytes());
@@ -305,14 +346,22 @@ public final class RemoteData implements DiscoveryListener{
  while(n!=size){
  	len=in.read(picdata,n,picdata.length-n); //read image completely
  	n+=len;
+ 	if(len==-1)
+ 		throw new IOException("Could not read image completely");
  }
+  if(n!=size)
+  	throw new IOException("Could not read image completely");
   return Image.createImage(picdata,0,picdata.length);
  }catch(IOException e){
   parent.appendToMainScreen("Error while reading image:"+n+"B read");
   e.printStackTrace();
+  closeConnection();
+  parent.appendToMainScreen("Connection terminated");
  }
  finally{
+ closeConnection();
  return null; //if all fails
+ 
  }
  }
  
@@ -321,11 +370,16 @@ public final class RemoteData implements DiscoveryListener{
   //quitting
   String msg="q;"+"\0";
   out.write(msg.getBytes());
-  out.flush();
-  in.close();
-  out.close();
+  out.flush(); 
   }catch(IOException e){
   e.printStackTrace();
+  }finally{
+   try{
+    	in.close();
+  	out.close();
+   }catch(IOException e){
+   	e.printStackTrace();
+   }
   }
  }
  
