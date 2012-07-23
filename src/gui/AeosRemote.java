@@ -46,7 +46,7 @@ mainScreen.addCommand(startSearch);
 mainScreen.addCommand(exitCommand);
 mainScreen.addCommand(gotoDevList);
 mainScreen.addCommand(gotoOpList);
-mainScreen.addCommand(gotoConList);
+//mainScreen.addCommand(gotoConList);
 mainScreen.setCommandListener(this);
 devList.addCommand(mainScreenBack);
 devList.addCommand(closeServerConn);
@@ -55,6 +55,7 @@ opList.addCommand(mainScreenFromOpList);
 opList.addCommand(showOpInfo);
 //opList.addCommand(preview);
 opList.addCommand(nextOp);
+opList.addCommand(gotoConList);
 opList.setCommandListener(this);
 conList.addCommand(mainScreenFromConList);
 conList.setCommandListener(this);
@@ -104,6 +105,8 @@ if(d==devList){
   Runnable runner=new Runnable(){
   public void run(){
   rem.closeConnection();
+  opList.deleteAll();
+  conList.deleteAll();
   //set connected image
   devList.set(devList.getSelectedIndex(),devList.getString(devList.getSelectedIndex()),servImage);
   
@@ -193,7 +196,7 @@ return;
 }
 if(d==conList){
 if(c==mainScreenFromConList){
-show(mainScreen);
+show(opList);
 }else{
 //selection
 Runnable runner=new Runnable(){
